@@ -47,18 +47,26 @@ function normalizeUrl(href) {
   if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return null;
 
   try {
-    let path;
     if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
       const url = new URL(href, 'https://placeholder.com');
-      path = url.pathname;
+      let path = url.pathname.toLowerCase();
+      if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+      // Preserve query and fragment — different params/anchors = different destinations
+      return path + url.search.toLowerCase() + url.hash.toLowerCase();
     } else {
-      path = href.split('?')[0].split('#')[0];
+      // Relative URL: split into path + rest (query/fragment)
+      let normalized = href.toLowerCase();
+      const firstSpecial = Math.min(
+        normalized.indexOf('?') === -1 ? Infinity : normalized.indexOf('?'),
+        normalized.indexOf('#') === -1 ? Infinity : normalized.indexOf('#')
+      );
+      let path = firstSpecial === Infinity ? normalized : normalized.slice(0, firstSpecial);
+      const rest = firstSpecial === Infinity ? '' : normalized.slice(firstSpecial);
+      if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+      return (path || normalized) + rest;
     }
-    path = path.toLowerCase();
-    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-    return path || href.toLowerCase();
   } catch {
-    return href.toLowerCase().split('?')[0].split('#')[0];
+    return href.toLowerCase();
   }
 }
 
