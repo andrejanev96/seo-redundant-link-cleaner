@@ -382,7 +382,8 @@ function generateCleanHtmlFromPreview() {
   });
   state.targetSelfCount = targetSelfCount;
 
-  return clone.innerHTML;
+  // Restore template syntax placeholders that were kept safe in the preview
+  return restoreTemplateSyntax(clone.innerHTML, state.placeholders);
 }
 
 function generatePreviewHtml() {
@@ -412,7 +413,11 @@ function generatePreviewHtml() {
     }
   });
 
-  const bodyHtml = restoreTemplateSyntax(container.innerHTML, placeholders);
+  // Keep placeholders in preview — restoring {{...}} here would break iframe
+  // parsing because quotes inside attributes get mangled by the HTML parser.
+  // Placeholders are restored during clean HTML extraction instead.
+  state.placeholders = placeholders;
+  const bodyHtml = container.innerHTML;
   return `<!DOCTYPE html><html><head><style>
     body{font-family:-apple-system,system-ui,sans-serif;padding:24px;line-height:1.7;font-size:14px;color:#333;max-width:800px;}
     body:focus{outline:none;}
