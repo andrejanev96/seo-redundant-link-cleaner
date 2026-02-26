@@ -63,7 +63,7 @@ function normalizeUrl(href) {
       let path = firstSpecial === Infinity ? normalized : normalized.slice(0, firstSpecial);
       const rest = firstSpecial === Infinity ? '' : normalized.slice(firstSpecial);
       if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-      return (path || normalized) + rest;
+      return (path + rest) || normalized;
     }
   } catch {
     return href.toLowerCase();
@@ -157,6 +157,9 @@ function analyzeHtml(html) {
   const container = document.createElement('div');
   container.innerHTML = protectedHtml;
 
+  const h1 = container.querySelector('h1');
+  const title = h1 ? h1.textContent.trim() : '';
+
   const allAnchors = container.querySelectorAll('a[href]');
   const links = [];
   const groups = {};
@@ -244,7 +247,7 @@ function analyzeHtml(html) {
   const externalLinks = links.filter(l => l.isExternal).length;
 
   return {
-    links, groups, warnings,
+    links, groups, warnings, title,
     stats: { totalLinks, uniqueUrls, imageLinks, ctaLinks, textLinks, externalLinks }
   };
 }
@@ -641,7 +644,8 @@ function collapseInput() {
 
   const charCount = state.originalHtml.length;
   const linkCount = state.stats.totalLinks;
-  summary.textContent = `${charCount.toLocaleString()} chars, ${linkCount} links found`;
+  const titlePart = state.articleTitle ? `${state.articleTitle}  ·  ` : '';
+  summary.textContent = `${titlePart}${charCount.toLocaleString()} chars, ${linkCount} links found`;
 
   body.classList.add('collapsed');
   bar.classList.remove('hidden');
@@ -674,6 +678,7 @@ function handleAnalyze() {
   state.groups = result.groups;
   state.warnings = result.warnings;
   state.stats = result.stats;
+  state.articleTitle = result.title;
 
   applyAutoStrip();
 

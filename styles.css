@@ -100,6 +100,9 @@ header h1 {
   font-size: 11px;
   color: #a0a5b2;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .btn-next-article {
   padding: 3px 12px;
