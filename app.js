@@ -4,7 +4,6 @@ let state = {
   links: [],
   groups: {},
   warnings: [],
-  insights: { anchorIssues: [], linkOpportunities: [] },
   stats: {},
   targetSelfCount: 0,
   previewReady: false
@@ -143,141 +142,6 @@ function getContext(linkEl) {
   return ctx;
 }
 
-// ===== SEO Anchor Text Scoring =====
-const GENERIC_ANCHOR_PATTERNS = [
-  /^click\s*here$/i,
-  /^here$/i,
-  /^this$/i,
-  /^this\s+(page|link|article|post|site|website)$/i,
-  /^read\s*more$/i,
-  /^more$/i,
-  /^link$/i,
-  /^go\s*(to)?$/i,
-  /^check\s+(it\s+)?out$/i,
-  /^see\s+(more|here|this|details|it)$/i,
-  /^view$/i,
-  /^details$/i,
-  /^info(rmation)?$/i,
-  /^source$/i,
-  /^find\s+out(\s+more)?$/i,
-  /^continue\s+reading$/i,
-  /^visit$/i,
-  /^(the\s+)?website$/i,
-  /^(the\s+)?article$/i,
-];
-
-function scoreAnchorText(text) {
-  const t = text.trim();
-  if (!t || t === '[empty]' || t === '[image]') return 'good';
-  if (/^https?:\/\//i.test(t) || /^www\./i.test(t)) return 'url-as-anchor';
-  if (t.length <= 2 && !/\d/.test(t)) return 'short';
-  if (GENERIC_ANCHOR_PATTERNS.some(re => re.test(t))) return 'generic';
-  return 'good';
-}
-
-function slugToSuggestion(normalizedUrl) {
-  const parts = normalizedUrl.split('/').filter(Boolean);
-  const slug = parts[parts.length - 1] || '';
-  if (!slug || slug.length < 3) return null;
-  let suggestion = slug.replace(/-/g, ' ');
-  suggestion = suggestion.replace(/\b\w/g, c => c.toUpperCase());
-  suggestion = suggestion.replace(/\bVs\b/g, 'vs').replace(/\bAnd\b/g, 'and');
-  return suggestion;
-}
-
-// ===== Unlinked Mention Detection =====
-function findUnlinkedMentions(container, groups) {
-  const mentions = [];
-  const BLOCK_TAGS = ['P','LI','TD','TH','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','FIGCAPTION','DD','DT','DIV'];
-
-  // Collect search terms from good-quality anchor texts
-  const searchTerms = [];
-  for (const [url, group] of Object.entries(groups)) {
-    const textLinks = group.links.filter(l => !l.isImageLink && !l.isCtaLink);
-    const anchors = new Set();
-    for (const link of textLinks) {
-      const text = link.anchorText.trim();
-      if (text.length < 4 || text === '[empty]') continue;
-      if (scoreAnchorText(text) !== 'good') continue;
-      anchors.add(text);
-    }
-    for (const anchor of anchors) {
-      searchTerms.push({ url, anchor, anchorLower: anchor.toLowerCase() });
-    }
-  }
-
-  if (searchTerms.length === 0) return mentions;
-
-  function getBlockParent(node) {
-    let cur = node.parentElement;
-    while (cur && cur !== container) {
-      if (BLOCK_TAGS.includes(cur.tagName)) return cur;
-      cur = cur.parentElement;
-    }
-    return container;
-  }
-
-  function isInsideLink(node) {
-    let cur = node.parentElement;
-    while (cur && cur !== container) {
-      if (cur.tagName === 'A') return true;
-      cur = cur.parentElement;
-    }
-    return false;
-  }
-
-  // Map each URL to the block parents that already contain a link to it
-  const linkedBlocks = {};
-  for (const url of Object.keys(groups)) {
-    linkedBlocks[url] = new Set();
-    container.querySelectorAll('a[href]').forEach(a => {
-      if (normalizeUrl(a.getAttribute('href')) === url) {
-        linkedBlocks[url].add(getBlockParent(a));
-      }
-    });
-  }
-
-  // Walk text nodes outside of links
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-  const foundKeys = new Set();
-
-  while (walker.nextNode()) {
-    const textNode = walker.currentNode;
-    if (isInsideLink(textNode)) continue;
-
-    const nodeText = textNode.textContent;
-    if (!nodeText || nodeText.trim().length < 4) continue;
-
-    const blockParent = getBlockParent(textNode);
-
-    for (const term of searchTerms) {
-      if (linkedBlocks[term.url] && linkedBlocks[term.url].has(blockParent)) continue;
-
-      const escaped = term.anchorLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp('\\b' + escaped + '\\b', 'i');
-
-      if (regex.test(nodeText)) {
-        const key = term.url + '|' + term.anchorLower;
-        if (foundKeys.has(key)) continue;
-        foundKeys.add(key);
-
-        const match = nodeText.match(regex);
-        const idx = match ? match.index : 0;
-        const start = Math.max(0, idx - 30);
-        const end = Math.min(nodeText.length, idx + term.anchor.length + 30);
-        let ctx = nodeText.slice(start, end).trim();
-        if (start > 0) ctx = '...' + ctx;
-        if (end < nodeText.length) ctx += '...';
-
-        mentions.push({ url: term.url, anchor: term.anchor, context: ctx });
-        if (mentions.length >= 10) return mentions;
-      }
-    }
-  }
-
-  return mentions;
-}
-
 // ===== Analysis Engine =====
 function analyzeHtml(html) {
   const domain = document.getElementById('site-domain').value.trim();
@@ -371,32 +235,8 @@ function analyzeHtml(html) {
   const textLinks = totalLinks - imageLinks - ctaLinks;
   const externalLinks = links.filter(l => l.isExternal).length;
 
-  // === SEO Insights ===
-  const insights = { anchorIssues: [], linkOpportunities: [] };
-
-  // Anchor text quality scoring
-  links.forEach(link => {
-    if (link.isImageLink || link.isCtaLink || link.isExternal) return;
-    const quality = scoreAnchorText(link.anchorText);
-    link.anchorQuality = quality;
-    if (quality !== 'good') {
-      insights.anchorIssues.push({
-        linkId: link.id,
-        anchorText: link.anchorText,
-        url: link.normalizedHref,
-        href: link.href,
-        quality,
-        suggestion: slugToSuggestion(link.normalizedHref),
-        context: link.context
-      });
-    }
-  });
-
-  // Unlinked mention detection
-  insights.linkOpportunities = findUnlinkedMentions(container, groups);
-
   return {
-    links, groups, warnings, insights,
+    links, groups, warnings,
     stats: { totalLinks, uniqueUrls, imageLinks, ctaLinks, textLinks, externalLinks }
   };
 }
@@ -460,8 +300,6 @@ function processContainer(html, callback) {
 }
 
 function generateCleanHtml() {
-  const domain = document.getElementById('site-domain').value.trim();
-
   const { container, placeholders } = processContainer(state.originalHtml, (a, link) => {
     if (!link.keep) {
       a.setAttribute('data-srlc-remove', 'true');
@@ -475,14 +313,11 @@ function generateCleanHtml() {
     parent.removeChild(a);
   });
 
-  // Strip target="_self" from internal links
+  // Strip target="_self" from all links (it's always the browser default, never needed)
   let targetSelfCount = 0;
   container.querySelectorAll('a[target="_self"]').forEach(a => {
-    const href = a.getAttribute('href') || '';
-    if (isInternalLink(href, domain)) {
-      a.removeAttribute('target');
-      targetSelfCount++;
-    }
+    a.removeAttribute('target');
+    targetSelfCount++;
   });
   state.targetSelfCount = targetSelfCount;
 
@@ -490,7 +325,6 @@ function generateCleanHtml() {
 }
 
 function generateCleanHtmlFromPreview() {
-  const domain = document.getElementById('site-domain').value.trim();
   const frame = document.getElementById('preview-frame');
 
   if (!frame.contentDocument || !frame.contentDocument.body) {
@@ -540,14 +374,11 @@ function generateCleanHtmlFromPreview() {
     a.removeAttribute('contenteditable');
   });
 
-  // Strip target="_self" from internal links
+  // Strip target="_self" from all links (it's always the browser default, never needed)
   let targetSelfCount = 0;
   clone.querySelectorAll('a[target="_self"]').forEach(a => {
-    const href = a.getAttribute('href') || '';
-    if (isInternalLink(href, domain)) {
-      a.removeAttribute('target');
-      targetSelfCount++;
-    }
+    a.removeAttribute('target');
+    targetSelfCount++;
   });
   state.targetSelfCount = targetSelfCount;
 
@@ -680,49 +511,6 @@ function renderWarnings() {
   el.innerHTML = state.warnings.map(w =>
     `<div class="warning">${icons[w.type]||'\u26A0'} ${escapeHtml(w.message)}</div>`
   ).join('');
-  el.classList.add('visible');
-}
-
-function renderInsights() {
-  const el = document.getElementById('insights');
-  const ins = state.insights;
-
-  if (!ins || (ins.anchorIssues.length === 0 && ins.linkOpportunities.length === 0)) {
-    el.classList.remove('visible');
-    return;
-  }
-
-  let html = '';
-
-  if (ins.anchorIssues.length > 0) {
-    const labels = { generic: 'Generic', 'url-as-anchor': 'URL as anchor', short: 'Too short' };
-    html += '<div class="insight-group">';
-    html += '<div class="insight-header">\u26A0\uFE0F Weak Anchor Text <span class="insight-count">' + ins.anchorIssues.length + '</span></div>';
-    ins.anchorIssues.forEach(issue => {
-      html += '<div class="insight-item insight-anchor">';
-      html += '<span class="insight-badge insight-badge-' + issue.quality + '">' + labels[issue.quality] + '</span> ';
-      html += '<code>' + escapeHtml(issue.anchorText) + '</code> \u2192 <span class="insight-url">' + escapeHtml(issue.url) + '</span>';
-      if (issue.suggestion) {
-        html += '<div class="insight-suggestion">\uD83D\uDCA1 Try: <strong>' + escapeHtml(issue.suggestion) + '</strong></div>';
-      }
-      html += '</div>';
-    });
-    html += '</div>';
-  }
-
-  if (ins.linkOpportunities.length > 0) {
-    html += '<div class="insight-group">';
-    html += '<div class="insight-header">\uD83D\uDD17 Link Opportunities <span class="insight-count">' + ins.linkOpportunities.length + '</span></div>';
-    ins.linkOpportunities.forEach(opp => {
-      html += '<div class="insight-item insight-opportunity">';
-      html += 'Unlinked mention of <strong>' + escapeHtml(opp.anchor) + '</strong> \u2014 could link to <code>' + escapeHtml(opp.url) + '</code>';
-      html += '<div class="insight-context">' + escapeHtml(opp.context) + '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
-  }
-
-  el.innerHTML = html;
   el.classList.add('visible');
 }
 
@@ -872,7 +660,6 @@ function handleAnalyze() {
   state.links = result.links;
   state.groups = result.groups;
   state.warnings = result.warnings;
-  state.insights = result.insights;
   state.stats = result.stats;
 
   applyAutoStrip();
@@ -882,7 +669,6 @@ function handleAnalyze() {
   // Check if article is already clean (no redundant links to strip)
   if (removed === 0) {
     renderWarnings();
-    renderInsights();
     updateUI();
     document.getElementById('main-content').classList.add('visible');
     collapseInput();
@@ -892,7 +678,6 @@ function handleAnalyze() {
   }
 
   renderWarnings();
-  renderInsights();
   updateUI();
   document.getElementById('main-content').classList.add('visible');
   collapseInput();
@@ -940,12 +725,11 @@ function handleKeepAll() {
 
 function handleNextArticle(e) {
   if (e) e.stopPropagation();
-  state = { originalHtml: '', links: [], groups: {}, warnings: [], insights: { anchorIssues: [], linkOpportunities: [] }, stats: {}, targetSelfCount: 0, previewReady: false };
+  state = { originalHtml: '', links: [], groups: {}, warnings: [], stats: {}, targetSelfCount: 0, previewReady: false };
 
   document.getElementById('html-input').value = '';
   document.getElementById('stats-bar').classList.remove('visible');
   document.getElementById('warnings').classList.remove('visible');
-  document.getElementById('insights').classList.remove('visible');
   document.getElementById('main-content').classList.remove('visible');
   document.getElementById('changes-badge').classList.add('hidden');
   hideCleanArticleBanner();
@@ -960,11 +744,10 @@ function handleNextArticle(e) {
 }
 
 function handleReset() {
-  state = { originalHtml: '', links: [], groups: {}, warnings: [], insights: { anchorIssues: [], linkOpportunities: [] }, stats: {}, targetSelfCount: 0, previewReady: false };
+  state = { originalHtml: '', links: [], groups: {}, warnings: [], stats: {}, targetSelfCount: 0, previewReady: false };
   document.getElementById('html-input').value = '';
   document.getElementById('stats-bar').classList.remove('visible');
   document.getElementById('warnings').classList.remove('visible');
-  document.getElementById('insights').classList.remove('visible');
   document.getElementById('main-content').classList.remove('visible');
   hideCleanArticleBanner();
 
