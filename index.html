@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEO Redundant Link Cleaner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <h1>SEO Redundant Link Cleaner</h1>
+  <div class="header-divider"></div>
+  <div class="domain-input">
+    <label for="site-domain">Site domain</label>
+    <input type="text" id="site-domain" placeholder="e.g. ammo.com (optional)">
+  </div>
+</header>
+
+<section id="input-section">
+  <div id="input-collapse-bar" class="input-collapse-bar hidden">
+    <span class="input-collapse-label" onclick="toggleInputSection()">HTML Input</span>
+    <span id="input-collapse-summary" class="input-collapse-summary" onclick="toggleInputSection()"></span>
+    <button class="btn btn-next-article" onclick="handleNextArticle(event)" title="Clear current article and paste the next one">Next Article</button>
+    <span class="input-collapse-toggle" onclick="toggleInputSection()">Show</span>
+  </div>
+  <div id="input-body">
+    <textarea id="html-input" placeholder="Paste your article HTML here..." spellcheck="false"></textarea>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="handleAnalyze()">Analyze &amp; Auto-Strip</button>
+      <button class="btn btn-secondary" onclick="handleReset()">Reset</button>
+      <span style="margin-left:auto;font-size:11px;color:#a0a5b2">Ctrl/Cmd + Enter</span>
+    </div>
+  </div>
+</section>
+
+<div id="stats-bar"></div>
+<div id="warnings"></div>
+<div id="insights"></div>
+
+<div id="main-content">
+  <div id="output-panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="preview" onclick="switchTab('preview')">Preview</div>
+      <div class="tab" data-tab="clean" onclick="switchTab('clean')">Clean HTML</div>
+      <div class="tab" data-tab="changes" onclick="switchTab('changes')">Changes <span id="changes-badge" class="tab-badge hidden">0</span></div>
+      <div class="tab-actions">
+        <button class="btn btn-success btn-sm" onclick="handleCopy(event)">Copy</button>
+        <button class="btn btn-secondary btn-sm" onclick="handleAutoStrip()">Auto-Strip</button>
+        <button class="btn btn-secondary btn-sm" onclick="handleKeepAll()">Keep All</button>
+      </div>
+    </div>
+    <div id="preview-tab" class="tab-content active">
+      <div id="preview-content">
+        <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+      </div>
+    </div>
+    <div id="clean-tab" class="tab-content">
+      <div id="clean-html-content">
+        <textarea id="clean-output" readonly spellcheck="false"></textarea>
+        <div class="output-actions">
+          <button class="btn btn-success" id="copy-btn" onclick="handleCopy(event)">
+            <span class="copy-label">Copy Clean HTML</span>
+          </button>
+          <button class="btn btn-secondary" onclick="handleDownload()">Download</button>
+        </div>
+      </div>
+    </div>
+    <div id="changes-tab" class="tab-content">
+      <div id="changes-content"></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
